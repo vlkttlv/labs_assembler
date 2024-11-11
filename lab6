@@ -1,0 +1,103 @@
+.386
+.model flat, stdcall
+option casemap :none
+include D:\32\includes\user32.inc
+include D:\32\includes\kernel32.inc
+include D:\32\includes\msvcrt.inc
+include D:\32\includes\windows.inc
+includelib D:\32\includes\user32.lib
+includelib D:\32\kernel32.lib
+includelib D:\32\includes\msvcrt.lib
+
+.data
+	input_file      db "D:\ASM Visual\Projects\in.txt", 0 
+	output_file     db "D:\ASM Visual\Projects\out.txt", 0 
+	line_counter    dd 30h                                  ; Переменная для подсчета строк 
+	seen_chars      db 256 dup(0)                           ; Массив для отслеживания уже встречавшихся символов
+	buffer          db 256 dup(?)                           ; Буфер для чтения данных из входного файла
+	output_buffer   db 256 dup(0)                           ; Буфер для записи обработанной строки
+	bytes_read      dd ?                                    ; Количество прочитанных байт
+	write_file      dd ?                                    ; Дескриптор выходного файла
+	read_file       dd ?                                    ; Дескриптор входного файла
+	written_bytes   dd ?                                    ; Количество записанных байт
+	char_count      dd ?                                    ; Количество символов для обработки
+
+.code
+start:
+    invoke CreateFileA, offset input_file, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0; Открытие входного файла для чтения
+    mov read_file, eax        ; Сохранение дескриптора файла
+    cmp read_file, INVALID_HANDLE_VALUE
+    je errorExit              ; Переход к ошибке, если файл не открыт
+
+    invoke ReadFile, read_file, offset buffer, 256, offset bytes_read, 0; Чтение данных из входного файла в буфер
+    invoke CloseHandle, read_file    ; Закрытие входного файла
+
+    mov eax, bytes_read              ; Полученное количество байт
+    mov char_count, eax              ; Сохранение количества байт для дальнейшей обработки
+
+    cld                              ; Установка флага направления для строковых операций
+    lea esi, [buffer]                ; Загрузка адреса буфера в ESI
+    lea edi, output_buffer           ; Загрузка адреса выходного буфера в EDI
+    jmp newLine                      
+
+whileLoop:
+    cmp char_count, 0                ; Проверка, остались ли еще символы для обработки
+    je loopEnd                       
+
+    lodsb                            ; Загрузка следующего байта из буфера в AL и увеличение ESI
+    test al, al                      ; Проверка на нулевой байт (конец строки)
+    jz loopEnd                     
+
+    cmp al, 10                       
+    je newLine     
+
+    cmp al, ' '               
+    je wordBoundary               
+
+    movzx edx, al                    ; Расширение байта в AL до полного слова в EDX
+    test byte ptr seen_chars[edx], 1 ; Проверка, встречался ли данный символ ранее
+    jnz whileLoop                    ; Пропуск символа, если он уже встречался
+
+    stosb                            ; Сохранение текущего символа в выходной буфер
+    inc ecx                          ; Увеличение счетчика длины выходного текста
+    mov byte ptr seen_chars[edx], 1  ; Отметка символа как встречавшегося
+    jmp whileLoop                    ; Возврат к основной обработке
+
+
+wordBoundary:    
+  	stosb      ; Сохраняем пробел в выходной буфер
+    inc ecx         ; Увеличиваем счетчик длины выходного текста
+    xor ebx, ebx   ; Сбрасываем флаг конца строки
+    jmp resetSeenChars ; Переходим к сбросу массива seen_chars
+
+resetSeenChars:   
+    xor eax, eax ; Очищаем регистр EAX
+     
+clearLoop:        
+  	mov byte ptr seen_chars[edx], 0 ; Сбрасываем текущий элемент массива seen_chars
+    inc edx        ; Инкрементируем индекс для перехода к следующему элементу
+    cmp edx, 256    ; Проверяем, достигли ли конца массива
+    jne clearLoop     ; Если нет, продолжаем очищать массив
+    jmp whileLoop     ; Возвращаемся к основной обработке
+
+newLine:    
+  	mov eax, line_counter ; Загружаем счетчик строк
+    inc al      ; Увеличиваем счетчик строк
+    mov line_counter, eax ; Сохраняем новое значение счетчика строк
+    stosb     ; Сохраняем символ новой строки в выходной буфер
+    mov eax, ' .' ; Загружаем точку в EAX
+    stosw      ; Сохраняем точку в выходной буфер
+    jmp resetSeenChars ; Переходим к сбросу массива seen_chars
+
+loopEnd:        
+  	invoke CreateFileA, offset output_file, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0
+    ; Создаем или перезаписываем выходной файл
+    mov write_file, eax ; Сохраняем дескриптор выходного файла
+    invoke WriteFile, write_file, offset output_buffer, sizeof output_buffer, offset written_bytes, 0
+    invoke CloseHandle, write_file ; Закрываем выходной файл
+    invoke ExitProcess, 1 
+
+errorExit:        
+  	invoke CloseHandle, read_file ; Закрываем входной файл, если возникла ошибка
+    invoke ExitProcess, 1
+end start
