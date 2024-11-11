@@ -1,0 +1,106 @@
+.386
+.model flat, stdcall
+option casemap :none
+include D:\32\includes\windows.inc
+include D:\32\includes\kernel32.inc 
+include D:\32\includes\msvcrt.inc
+includelib D:\32\kernel32.lib  
+includelib D:\32\includes\msvcrt.lib
+
+BSIZE equ 256
+
+.data
+	stdin dd ?
+	stdout dd ?
+	num_read dd ? 
+
+	buffer_key byte BSIZE dup(?)
+
+	print_1_or_0 byte "%c", 0 ; для вывода "0" или "1"
+	print_symbol byte "%d", 0 ; для вывода 0 или 1
+	message_res byte " Результат: ", 13, 10, 0
+
+	number byte 0 ; для хранения числа
+	x byte 8 ; для счетчика бит
+	result byte ? ; для хранения ответа
+
+.code
+start:
+  	invoke AllocConsole
+  	invoke GetStdHandle, STD_INPUT_HANDLE
+  	mov stdin, eax
+
+start_loop:
+  	invoke ReadConsoleInput, stdin, ADDR buffer_key, BSIZE, ADDR num_read
+  	; buffer_key - буфер для чтения, bSIZE - размер буфера, num_read - кол-во прочитанных полей
+  	; получаем доступ к элементам памяти по индексу
+  	; 14 и 04 - значения из буфера клавиатуры
+  	cmp [buffer_key+14d], VK_RETURN; если нажат enter, то делаем операцию
+  	je doing_operations
+  	
+  	cmp [buffer_key+14d], 0 ; если клавиша не нажата, то начинаем заново
+  	je start_loop
+  	
+  	cmp [buffer_key+14d], 30h ; если меньше 0, то снова вводим символ
+  	jl start_loop
+  	
+  	cmp [buffer_key+14d], 31h ; если больше 1, то снова вводим символ
+  	jg start_loop
+  
+  	cmp [buffer_key+04d], 1h  ; если клавиша не нажата, то повторяем ввод
+  	jne start_loop ; В 7 ЛАБЕ ЭТА ШТУКА ДОЛЖНА БЫТЬ СВЕРХУ
+	
+	; записываем числo
+	  mov al, number
+    shl al, 1                          
+    mov number, al                     			; сохраняем результат  в number
+    xor al, al                          		; обнуляем AL
+    
+    mov al, [buffer_key + 14d]          		; загружаем символ из буфера
+    sub al, 30h                         		; преобразуем в 10СС
+    add number, al                      		; добавляем к текущему значению number
+    invoke crt_printf, offset print_symbol, al  ; выводим введенное число
+
+    dec x                              			; уменьшаем счетчик бит
+    cmp x, 0                           			; проверяем закончили ли вводить биты
+    jg start_loop                      			; если нет, продолжаем вводить
+    
+    jmp doing_operations
+
+doing_operations:
+    mov result, 0                       
+    mov al, number                      
+    xor al, 01010000b                   ; в старшей части заменяем четные биты (4 и 6) на противоположные
+    and al, 11110101b                   ; в младшей части обнуляем нечетные биты (1 и 3)
+    mov number, al                      ; cохраняем преобразованное число
+    shr number, 4                       ; делим число на 16 (сдвиг вправо на 4 бита)
+    invoke crt_printf, offset message_res 
+    
+print_start:            
+  	mov x, 7              ; устанавливаем начальное значение счетчика x
+  	mov cl, x             
+
+print_result:                
+  	mov bl, number        
+  	mov al, 7             ; Установка значения 7 в AL
+  	sub al, cl            ; AL = 7 - x
+  	mov cl, al            
+  	shl bl, cl            ; Сдвиг BL влево на количество, сохраненное в CL
+  	mov cl, 7             ; Установка значения 7 в CL
+  	shr bl, cl            ; Сдвиг BL вправо на 7 бит
+  	cmp bl, 0             ; если не 0, то печатаем 1
+  	jne print_num_1
+  	invoke crt_printf, offset print_1_or_0, "0" ; иначе печатаем 0
+  	jmp dec_x_and_check             
+
+print_num_1:                 
+	  invoke crt_printf, offset print_1_or_0, "1" 
+
+dec_x_and_check:      
+  	dec x                 ; Уменьшение счетчика x
+  	mov cl, x             
+  	cmp cl, 0             
+  	jge print_result            ; Если еще есть биты, продолжить вывод
+  	invoke ExitProcess, 0  
+  
+end start  
