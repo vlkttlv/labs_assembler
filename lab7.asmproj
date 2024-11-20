@@ -1,0 +1,239 @@
+.386
+.model flat, stdcall
+option casemap :none
+include E:\32\includes\windows.inc
+include E:\32\masm32.inc
+include E:\32\kernel32.inc
+include E:\32\macros.asm
+includelib E:\32\masm32.lib
+includelib E:\32\kernel32.lib
+
+NUM_LENGTH 	equ 4
+NUM_COUNT 	equ 8
+
+.data
+	message			db	"Enter a number ", 0
+	variables		db	"c", "d", "e", "f", "g", "h", "k", "m", 0
+	message_result	db	13, 10, "Result: ", 0
+
+	current_number_index dd 0
+	number_index		 dd	0
+	write_counter	     dd	0
+	result 			     dd 0
+	number			     dd	0
+	
+	numbers dd NUM_COUNT dup(0)
+
+	key_buffer db 256 dup(?)
+
+	stdout 		   dd ?
+	stdin		   dd ?
+	cRead		   dd ?
+	cWritten 	   dd ?
+	current_number db ?
+
+	a 	dd 3
+	b 	dd 5
+	cc 	dd ?
+	d 	dd ?
+	e 	dd ?
+	f 	dd ?
+	g 	dd ?
+	h 	dd ?
+	k 	dd ?
+	m 	dd ?
+
+.code
+start:
+	invoke AllocConsole
+	
+	invoke GetStdHandle, STD_INPUT_HANDLE
+	mov stdin, eax
+	invoke GetStdHandle, STD_OUTPUT_HANDLE
+	mov stdout, eax 
+	
+	mov number_index, 0	
+	
+start_loop:
+	mov current_number_index, 0	
+	
+	mov ebx, number_index
+	invoke WriteConsoleA, stdout, ADDR message, (SIZEOF message) - 1, ADDR cWritten, 0
+	
+	mov esi, offset variables 
+	add esi, ebx
+	invoke WriteConsoleA, stdout, esi, 1, ADDR cWritten, 0
+	print ": "
+	
+	
+inputNumber:
+	
+	invoke ReadConsoleInput, stdin, ADDR key_buffer, SIZEOF key_buffer, ADDR cRead
+	
+	xor eax, eax
+	cmp [key_buffer + 04d], 0h
+	je inputNumber
+	
+	cmp [key_buffer + 14d], VK_RETURN
+	je inputExit	
+	
+	cmp [key_buffer + 14d], 30h
+	jl inputNumber
+	
+	cmp [key_buffer + 14d], 39h
+	jg inputNumber
+
+	cmp [key_buffer + 04d], 1h
+	jne inputNumber
+	
+	mov al, [key_buffer + 14d]
+	mov current_number, al  
+	
+	invoke WriteConsoleA, stdout, offset current_number, 1, ADDR cWritten, 0
+	
+    mov ecx, numbers[ebx * (sizeof dword)] ; Загружаем текущее число из массива
+    mov eax, 10                  
+    mul ecx                      
+    mov numbers[ebx * (sizeof dword)], eax 
+
+    xor eax, eax                  
+    mov al, [key_buffer + 14d]        
+    sub al, 30h     
+    add numbers[ebx * (sizeof dword)], eax 
+
+    inc current_number_index   
+    cmp current_number_index, NUM_LENGTH 
+    jl inputNumber                
+	
+inputExit:                    
+    inc number_index    
+    print " ", 13, 10           
+    cmp number_index, NUM_COUNT  
+    jl start_loop               
+
+doingOperation:	
+	
+	mov eax, numbers[0]
+	mov cc, eax
+	mov eax, numbers[1 * (sizeof dword)]
+	mov d, eax
+	mov eax, numbers[2 * (sizeof dword)]
+	mov e, eax
+	mov eax, numbers[3 * (sizeof dword)]
+	mov f, eax
+	mov eax, numbers[4 * (sizeof dword)]
+	mov g, eax
+	mov eax, numbers[5 * (sizeof dword)]
+	mov h, eax
+	mov eax, numbers[6 * (sizeof dword)]
+	mov k, eax
+	mov eax, numbers[7 * (sizeof dword)]
+	mov m, eax
+	
+;   (a * b + c + d * e + f / g) + (h + k / m)
+	
+	mov eax, a     
+	imul eax, b         
+	add eax, cc    
+	
+	mov ebx, d     
+	imul ebx, e          
+	add eax, ebx
+	
+	mov result, eax
+
+	mov edx, 0
+	mov eax, f
+	div g
+	add result, eax
+	
+	mov eax, h
+	add result, eax
+	
+	mov edx, 0
+	mov eax, k
+	div m
+	add result, eax
+
+	invoke WriteConsoleA, stdout, ADDR message_result, (SIZEOF message_result) - 1, ADDR cWritten, 0
+	mov eax, result						
+	mov ecx, 3 * NUM_LENGTH		
+	
+	call printNumber
+	invoke ExitProcess, 0 
+	
+
+printNumber proc
+    push eax                      
+    push ebx
+    push ecx
+    push edx
+    
+    xor edx, edx
+    mov ebx, 0  
+                
+    mov number, eax              
+    mov write_counter, ecx       ; кол-во цифр в числе
+
+					
+printDigit:                     
+    mov eax, 10                  ; основание числа
+    mov ecx, write_counter       
+    call pow                     ; Вычисляем 10 ^ write_counter
+    
+    mul ebx                      ; Умножаем текущее число на 10 ^ write_counter
+    sub number, eax              
+    mov eax, 10                
+    dec ecx                     
+    call pow                     ; Вычисляем 10 ^ (write_counter - 1)
+    
+    mov ebx, eax                
+    mov eax, number              
+    div ebx                      ; Делим на 10 ^ (write_counter - 1)
+    xor edx, edx               
+    mov ebx, eax                 ; Сохраняем остаток
+    
+    add al, 30h            
+    mov current_number, al       
+    invoke WriteConsoleA, stdout, offset current_number, 1, ADDR cWritten, 0 
+    
+    dec write_counter            
+    cmp write_counter, 0       
+    jg printDigit      
+  
+    
+procExit:                     
+    pop edx                     
+    pop ecx
+    pop ebx
+    pop eax
+    ret        
+    
+printNumber endp
+
+pow proc
+    push ebx
+    push ecx
+    push edx
+    
+    mov ebx, eax                
+    mov eax, 1                 
+    
+    cmp ecx, 0     ; Сравниваем показатель степени с 0             
+    jle procEnd                
+
+mulLoop:        
+   mul ebx      ; Умножаем результат (в eax) на основание (ebx)
+   dec ecx      ; Уменьшаем счётчик (показатель степени)
+   cmp ecx, 0   
+   jg mulLoop       
+
+procEnd:                     
+    pop edx         
+    pop ecx
+    pop ebx
+    ret           
+               
+pow endp
+
+end start       
