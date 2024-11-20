@@ -1,0 +1,66 @@
+.386 
+.model flat,stdcall 
+
+option casemap:none ; включается чувствительность к ПРОПИСНЫМ или строчным символам
+include D:\32\includes\kernel32.inc
+include D:\32\includes\user32.inc
+include D:\32\includes\msvcrt.inc
+includelib D:\32\includes\kernel32.lib
+includelib D:\32\includes\user32.lib
+includelib  D:\32\includes\msvcrt.lib
+
+
+.data
+    num_a dd 3 ; объявляем переменные
+    num_x dd 0
+    y1 dd 0                
+    y2 dd 0               
+    y dd 0                 
+    ; форматированная строка с переносом строки
+	formatString db "Iteration №%d: Y1: %d (%x) , Y2: %d (%x), Y: %d (%x)", 10, 0 
+			
+.code
+while_start:
+    cmp num_x, 15      ; сравниваем х с 15
+    jg while_end       ;если num_x больше 15, переход к while_end
+
+    ; y1 = x - 2
+    mov eax, num_x
+    cmp eax, 2
+    jge Y1Minus2        ; если х >= 2, то y1 = num_х - 2
+    mov y1, 8           ; иначе y1 = 8
+    jmp countY2
+
+Y1Minus2:
+    sub eax, 2             ; y1 = num_x - 2
+    mov y1, eax            ; y1 сохраняем в y1
+
+countY2:
+    ; y2 = a - x
+    mov eax, num_x
+    cmp eax, 0
+    je SetY2To4            ; если num_x == 0, то y2 = 4
+    mov ebx, num_a
+    sub ebx, eax           ; y2 = num_a - num_x
+    mov y2, ebx
+    jmp CalculateY
+
+SetY2To4:
+    mov y2, 4              ; y2 = 4
+    jmp CalculateY
+
+CalculateY:
+    ; y = y1 - y2
+    mov eax, y1
+    sub eax, y2
+    mov y, eax ;
+
+    invoke crt_printf, addr formatString, num_x, y1, y1, y2, y2,  y, y ; выводим результат
+
+    inc num_x ; увеличиваем num_x на 1 и продолжаем цикл
+    jmp while_start
+
+while_end:
+    invoke ExitProcess, 0
+
+end while_start
